@@ -36,9 +36,11 @@ Download `manifest.json`, `backend.cjs`, and `main.js` from the [v0.1.0 release]
 # Inside LearnHarness's plugins directory (Settings → Community plugins shows the path):
 git clone https://github.com/mutaurwajeremiah-del/learnharness-workspace-files.git "<plugins-directory>/workspace-files"
 cd "<plugins-directory>/workspace-files"
-npm install --foreground-scripts
+npm install --include=dev --foreground-scripts
 npm run build
 ```
+
+Every build tool this plugin uses is a devDependency, so if `NODE_ENV=production` is set in your shell (check with `echo $env:NODE_ENV` in PowerShell), a plain `npm install` skips all of them and exits successfully with nothing installed. `--include=dev` avoids that.
 
 Then in LearnHarness: **Settings → Community plugins → Refresh** → enable **Workspace Files**, open its settings page and set your **Workspace folder**, and open the **Workspace Files** view from the sidebar whenever a delete or overwrite is waiting for your approval.
 
