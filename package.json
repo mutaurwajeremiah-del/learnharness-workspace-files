@@ -1,0 +1,13 @@
+{
+  "name": "learnharness-workspace-files",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Community plugin: workspace-confined file write tools for LearnHarness's teaching agents.",
+  "scripts": {
+    "build": "node esbuild.config.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "apiVersion": 1,
+  "id": "workspace-files",
+  "name": "Workspace Files",
+  "version": "0.1.0",
+  "minAppVersion": "0.6.1",
+  "description": "Lets the Teacher, Practitioner and Prober create, read, edit, append to, rename and (with your approval) delete files in one folder you choose.",
+  "author": "Jeremiah Mutaurwa",
+  "backend": "backend.cjs",
+  "main": "main.js"
+}
