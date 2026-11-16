@@ -636,7 +636,7 @@ function activate(ctx) {
     if (!assessment.ok) throw new WorkspaceError("unavailable", `Workspace unavailable: ${assessment.message}`);
     return { configured: stored.root, real: assessment.real };
   }
-  const { broker, list, decide } = createApprovalBroker(() => ctx.events.emit("workspace-files:approvals-changed"));
+  const { broker, list, decide } = createApprovalBroker(() => ctx.events.emit("workspace-files.approvals-changed"));
   async function approve(request, signal) {
     const outcome = await broker(request, signal);
     if (outcome.status === "approved") return;
@@ -660,13 +660,14 @@ function activate(ctx) {
     writeSettings(ctx.dataDirectory, { root: root || null });
     return readSettings(ctx.dataDirectory);
   });
-  ctx.handle("settings.assess", () => {
-    const stored = readSettings(ctx.dataDirectory);
-    if (!stored.root) return { ok: false, message: "No workspace folder is configured yet." };
-    return assessWorkspaceRoot(stored.root, protectedFolders);
+  ctx.handle("settings.assess", (input) => {
+    const candidate = typeof input?.root === "string" ? input.root.trim() : readSettings(ctx.dataDirectory).root;
+    if (!candidate) return { ok: false, message: "No workspace folder is configured yet." };
+    return assessWorkspaceRoot(candidate, protectedFolders);
   });
-  if (typeof ctx.registerSettings === "function") {
-    const settingsHandle = ctx.registerSettings({
+  const compatCtx = ctx;
+  if (typeof compatCtx.registerSettings === "function") {
+    const settingsHandle = compatCtx.registerSettings({
       rows: [
         {
           key: "root",
@@ -696,51 +697,67 @@ function activate(ctx) {
       return [
         {
           name: "read_file",
+          label: "read_file",
           description: "Read a text file from the workspace. Output is truncated; use offset/limit to page. Read a file before editing it.",
           parameters: { type: "object", properties: { path: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } }, required: ["path"] },
-          execute: async (_id, input) => ({ content: [{ type: "text", text: await readFileOp(workspaceRoot, input) }] })
+          executionMode: "sequential",
+          execute: async (_id, input) => ({ content: [{ type: "text", text: await readFileOp(workspaceRoot, input) }], details: void 0 })
         },
         {
           name: "list_directory",
+          label: "list_directory",
           description: "List a folder in the workspace (default: the root). Directories end with '/'.",
           parameters: { type: "object", properties: { path: { type: "string" }, limit: { type: "number" } } },
-          execute: async (_id, input) => ({ content: [{ type: "text", text: await listDirectoryOp(workspaceRoot, input ?? {}) }] })
+          executionMode: "sequential",
+          execute: async (_id, input) => ({ content: [{ type: "text", text: await listDirectoryOp(workspaceRoot, input ?? {}) }], details: void 0 })
         },
         {
           name: "write_file",
+          label: "write_file",
           description: "Create a NEW text file (missing parent folders are created). Fails if it exists. overwrite=true replaces an existing file and needs the learner's approval.",
           parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, overwrite: { type: "boolean" } }, required: ["path", "content"] },
-          execute: async (_id, input, signal) => ({ content: [{ type: "text", text: await writeFileOp(workspaceRoot, input, approve, signal) }] })
+          executionMode: "sequential",
+          execute: async (_id, input, signal) => ({ content: [{ type: "text", text: await writeFileOp(workspaceRoot, input, approve, signal) }], details: void 0 })
         },
         {
           name: "edit_file",
+          label: "edit_file",
           description: "Replace exact text in an existing file. old_string must match exactly once (or set replace_all=true).",
           parameters: { type: "object", properties: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, required: ["path", "old_string", "new_string"] },
-          execute: async (_id, input) => ({ content: [{ type: "text", text: await editFileOp(workspaceRoot, input) }] })
+          executionMode: "sequential",
+          execute: async (_id, input) => ({ content: [{ type: "text", text: await editFileOp(workspaceRoot, input) }], details: void 0 })
         },
         {
           name: "append_file",
+          label: "append_file",
           description: "Add text to the end of an existing file. Fails if missing unless create_if_missing=true.",
           parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, create_if_missing: { type: "boolean" } }, required: ["path", "content"] },
-          execute: async (_id, input) => ({ content: [{ type: "text", text: await appendFileOp(workspaceRoot, input) }] })
+          executionMode: "sequential",
+          execute: async (_id, input) => ({ content: [{ type: "text", text: await appendFileOp(workspaceRoot, input) }], details: void 0 })
         },
         {
           name: "create_directory",
+          label: "create_directory",
           description: "Create a folder (and missing parents) in the workspace.",
           parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
-          execute: async (_id, input) => ({ content: [{ type: "text", text: await createDirectoryOp(workspaceRoot, input) }] })
+          executionMode: "sequential",
+          execute: async (_id, input) => ({ content: [{ type: "text", text: await createDirectoryOp(workspaceRoot, input) }], details: void 0 })
         },
         {
           name: "rename_path",
+          label: "rename_path",
           description: "Rename or move a file or folder within the workspace. Never overwrites.",
           parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } }, required: ["from", "to"] },
-          execute: async (_id, input) => ({ content: [{ type: "text", text: await renamePathOp(workspaceRoot, input) }] })
+          executionMode: "sequential",
+          execute: async (_id, input) => ({ content: [{ type: "text", text: await renamePathOp(workspaceRoot, input) }], details: void 0 })
         },
         {
           name: "delete_file",
+          label: "delete_file",
           description: "Delete ONE file. The learner must approve it in the Workspace Files plugin panel; folders are never deleted.",
           parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
-          execute: async (_id, input, signal) => ({ content: [{ type: "text", text: await deleteFileOp(workspaceRoot, input, approve, signal) }] })
+          executionMode: "sequential",
+          execute: async (_id, input, signal) => ({ content: [{ type: "text", text: await deleteFileOp(workspaceRoot, input, approve, signal) }], details: void 0 })
         }
       ];
     }

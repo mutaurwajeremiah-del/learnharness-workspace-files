@@ -16,21 +16,16 @@ function activate(ctx) {
         value: root,
         onChange: async (value) => {
           const saved = await ctx.call("settings.set", { root: value });
-          if (handle && typeof handle !== "function" && "update" in handle) {
-            handle.update({ rows: rows(saved.root ?? "") });
-          }
+          handle?.update({ rows: rows(saved.root ?? "") });
         }
       }
     ];
     handle = ctx.registerSettings({ rows: rows("") });
     void ctx.call("settings.get").then((s) => {
-      if (handle && typeof handle !== "function" && "update" in handle) {
-        handle.update({ rows: rows(s.root ?? "") });
-      }
+      handle?.update({ rows: rows(s.root ?? "") });
     }).catch(() => void 0);
     ctx.cleanup?.(() => {
-      if (typeof handle === "function") handle();
-      else handle?.dispose?.();
+      handle?.dispose();
     });
   }
   ctx.registerView({
@@ -66,10 +61,10 @@ function activate(ctx) {
         const heading = document.createElement("strong");
         heading.textContent = a.operation === "delete_file" ? "Delete file?" : "Replace file contents?";
         card.appendChild(heading);
-        const path = document.createElement("div");
-        path.textContent = a.relativePath;
-        path.style.cssText = "font-family:monospace;margin:4px 0";
-        card.appendChild(path);
+        const pathEl = document.createElement("div");
+        pathEl.textContent = a.relativePath;
+        pathEl.style.cssText = "font-family:monospace;margin:4px 0";
+        card.appendChild(pathEl);
         const meta = document.createElement("div");
         meta.style.cssText = "font-size:12px;opacity:0.7;margin-bottom:6px";
         meta.textContent = `${a.absolutePath} \u2014 ${formatBytes(a.sizeBytes)}${a.newSizeBytes !== void 0 ? ` \u2192 ${formatBytes(a.newSizeBytes)}` : ""}`;
@@ -84,10 +79,10 @@ function activate(ctx) {
         row.style.cssText = "display:flex;gap:8px;margin-top:8px";
         const keep = document.createElement("button");
         keep.textContent = a.operation === "delete_file" ? "Keep file" : "Keep original";
-        keep.onclick = () => decide(a.id, false);
+        keep.onclick = () => void decide(a.id, false);
         const go = document.createElement("button");
         go.textContent = a.operation === "delete_file" ? "Delete file" : "Replace file";
-        go.onclick = () => decide(a.id, true);
+        go.onclick = () => void decide(a.id, true);
         row.appendChild(keep);
         row.appendChild(go);
         card.appendChild(row);
@@ -99,7 +94,15 @@ function activate(ctx) {
       }
       await refresh();
       const interval = setInterval(() => void refresh(), 2e3);
-      signal.addEventListener("abort", () => clearInterval(interval), { once: true });
+      const offNotify = ctx.onNotification?.((ev) => {
+        if (ev?.topic === "workspace-files.approvals-changed") void refresh();
+      });
+      const offResync = ctx.onResync?.(() => void refresh());
+      signal.addEventListener("abort", () => {
+        clearInterval(interval);
+        offNotify?.();
+        offResync?.();
+      }, { once: true });
     }
   });
 }

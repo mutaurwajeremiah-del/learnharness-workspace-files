@@ -1,12 +1,12 @@
-import type { PluginFrontendContext } from "learnharness-plugin-api";
+import type { PluginFrontendContext, PluginSettingsSchema, PluginWidgetHandle } from "learnharness-plugin-api";
 
 /**
- * The learner-facing side: a sidebar view listing pending delete/overwrite
- * approvals, with Approve/Keep buttons. Polls every 2s while open — simpler
- * and more certain to work correctly than guessing at the exact modal-surface
- * API for a first scaffold; see README.md for upgrading this to a proper
- * ctx.ui.openSurface modal that pops up on its own instead of needing the
- * view to be open.
+ * The learner-facing side:
+ * 1. Registers the "Workspace folder" setting row in LearnHarness's plugin
+ *    settings UI via ctx.registerSettings({ rows }).
+ * 2. Registers a sidebar view ("Workspace Files") listing pending delete/overwrite
+ *    approvals, with Keep/Approve buttons. Listens to live plugin notifications
+ *    and polls every 2s while open.
  */
 
 interface PendingApproval {
@@ -29,31 +29,26 @@ function formatBytes(n: number): string {
 
 export function activate(ctx: PluginFrontendContext) {
 	if (typeof ctx.registerSettings === "function") {
-		let handle: ReturnType<NonNullable<PluginFrontendContext["registerSettings"]>> | undefined;
-		const rows = (root: string) => [
+		let handle: PluginWidgetHandle<PluginSettingsSchema> | undefined;
+		const rows = (root: string): PluginSettingsSchema["rows"] => [
 			{
 				key: "root",
 				label: "Workspace folder",
 				description: "The one folder the Teacher, Practitioner and Prober may create, edit, rename and (with your approval) delete files in.",
-				type: "text" as const,
+				type: "text",
 				value: root,
 				onChange: async (value: string) => {
 					const saved = await ctx.call<{ root: string | null }>("settings.set", { root: value });
-					if (handle && typeof handle !== "function" && "update" in handle) {
-						(handle as { update(p: unknown): void }).update({ rows: rows(saved.root ?? "") });
-					}
+					handle?.update({ rows: rows(saved.root ?? "") });
 				},
 			},
 		];
 		handle = ctx.registerSettings({ rows: rows("") });
 		void ctx.call<{ root: string | null }>("settings.get").then((s) => {
-			if (handle && typeof handle !== "function" && "update" in handle) {
-				(handle as { update(p: unknown): void }).update({ rows: rows(s.root ?? "") });
-			}
+			handle?.update({ rows: rows(s.root ?? "") });
 		}).catch(() => undefined);
 		ctx.cleanup?.(() => {
-			if (typeof handle === "function") handle();
-			else handle?.dispose?.();
+			handle?.dispose();
 		});
 	}
 
@@ -92,10 +87,10 @@ export function activate(ctx: PluginFrontendContext) {
 				const heading = document.createElement("strong");
 				heading.textContent = a.operation === "delete_file" ? "Delete file?" : "Replace file contents?";
 				card.appendChild(heading);
-				const path = document.createElement("div");
-				path.textContent = a.relativePath;
-				path.style.cssText = "font-family:monospace;margin:4px 0";
-				card.appendChild(path);
+				const pathEl = document.createElement("div");
+				pathEl.textContent = a.relativePath;
+				pathEl.style.cssText = "font-family:monospace;margin:4px 0";
+				card.appendChild(pathEl);
 				const meta = document.createElement("div");
 				meta.style.cssText = "font-size:12px;opacity:0.7;margin-bottom:6px";
 				meta.textContent = `${a.absolutePath} — ${formatBytes(a.sizeBytes)}${a.newSizeBytes !== undefined ? ` → ${formatBytes(a.newSizeBytes)}` : ""}`;
@@ -110,10 +105,10 @@ export function activate(ctx: PluginFrontendContext) {
 				row.style.cssText = "display:flex;gap:8px;margin-top:8px";
 				const keep = document.createElement("button");
 				keep.textContent = a.operation === "delete_file" ? "Keep file" : "Keep original";
-				keep.onclick = () => decide(a.id, false);
+				keep.onclick = () => void decide(a.id, false);
 				const go = document.createElement("button");
 				go.textContent = a.operation === "delete_file" ? "Delete file" : "Replace file";
-				go.onclick = () => decide(a.id, true);
+				go.onclick = () => void decide(a.id, true);
 				row.appendChild(keep);
 				row.appendChild(go);
 				card.appendChild(row);
@@ -127,7 +122,15 @@ export function activate(ctx: PluginFrontendContext) {
 
 			await refresh();
 			const interval = setInterval(() => void refresh(), 2000);
-			signal.addEventListener("abort", () => clearInterval(interval), { once: true });
+			const offNotify = ctx.onNotification?.((ev) => {
+				if (ev?.topic === "workspace-files.approvals-changed") void refresh();
+			});
+			const offResync = ctx.onResync?.(() => void refresh());
+			signal.addEventListener("abort", () => {
+				clearInterval(interval);
+				offNotify?.();
+				offResync?.();
+			}, { once: true });
 		},
 	});
 }
